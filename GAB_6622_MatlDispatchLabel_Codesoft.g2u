@@ -1,0 +1,160 @@
+﻿Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Variable.Global.GuiUserNo.Declare(String)
+Variable.Global.GuiUserName.Declare(String)
+V.Global.iBiRunID.Declare(Long)
+V.Global.iBiRptID.Declare(Long)
+V.Global.iBiLogID.Declare(Long)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Josh Withrow
+'2022-02-08 for Superior Tube Products
+
+'Hooks...
+'	Populate 15710
+'	Script 1 15760
+
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+	F.Intrinsic.Control.Case("15710")
+		V.Passed.000016.Set("MATL Req")
+		
+	F.Intrinsic.Control.CaseElse
+		F.ODBC.Connection!con.OpenCompanyConnection(500)
+		F.Intrinsic.Control.CallSub(Checksec)
+		F.Intrinsic.Control.CallSub(MatlReq)
+		F.ODBC.Connection!con.Close
+		
+F.Intrinsic.Control.EndSelect
+
+Program.Sub.Main.End
+
+Program.Sub.CheckSec.Start
+' Check to see that there is an active user
+
+V.Local.sInitial.Declare
+V.Local.sLastName.Declare
+V.Local.iPos.Declare
+V.Local.iLen.Declare
+'check if called from the GUI or GS Menu
+f.Intrinsic.Control.If(v.Caller.Hook,>,"1000000")
+	V.Global.GuiUserName.Set(v.Caller.User)
+f.Intrinsic.Control.Else
+	V.Global.GuiUserName.Set(V.Passed.000005)
+	V.Global.GuiUserNo.Set(V.Passed.009993)
+f.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.If(V.Global.GuiUserName,=,"")
+	F.Intrinsic.UI.Msgbox("Please select/scan an employee first","On-line GUI Message")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+f.Intrinsic.Control.If(v.Caller.Hook,<,"1000000")
+	F.Intrinsic.String.Left(V.Global.GuiUserName,1,V.Local.sInitial)
+	F.Intrinsic.String.Concat(V.Local.sInitial,". ",V.Local.sInitial)
+	F.Intrinsic.String.Instr(V.Global.GuiUserName," ",V.Local.iPos)
+	F.Intrinsic.String.Len(V.Global.GuiUserName,V.Local.iLen)
+	F.Intrinsic.Math.Sub(V.Local.iLen,V.Local.iPos,V.Local.iLen)
+	F.Intrinsic.String.Right(V.Global.GuiUserName,V.Local.iLen,V.Local.sLastName)
+	F.Intrinsic.String.Concat(V.Local.sInitial,V.Local.sLastName,V.Global.GuiUserName)
+	F.Intrinsic.String.Left(V.Global.GuiUserName,15,V.Global.GuiUserName)
+f.Intrinsic.Control.endif
+Program.Sub.CheckSec.End
+
+Program.Sub.MatlReq.Start
+' Let's gather some information from the GUI screen, perform some mild validation, and then if it all checks
+' out let's print a label!
+
+V.Local..BulkDeclareString(sLMO, sSql, sRet, sDate, sTime, sMonth, sDay, sYear, sHours, sMinutes, sSeconds, sJob, sSuffix, sSeq, sSQLDate, sWC, sPart, sBin, sLot, sHeat, sSerial, sQuantity, sFields, sValues, sFilename, sRptloc, sRptBiLoc, sOpenQty)
+V.Local..BulkDeclareLong(i)
+
+' Convert V.Ambient.Now to SQL Datetime
+F.Intrinsic.String.DateString(V.Ambient.Now,V.Local.sDate)
+F.Intrinsic.String.Left(V.Local.sDate,4,V.Local.sYear)
+F.Intrinsic.String.Mid(V.Local.sDate,5,2,V.Local.sMonth)
+F.Intrinsic.String.Right(V.Local.sDate,2,V.Local.sDay)
+F.Intrinsic.String.TimeStringsec(V.Ambient.Now,V.Local.sTime)
+F.Intrinsic.String.Left(V.Local.sTime,2,V.Local.sHours)
+F.Intrinsic.String.Mid(V.Local.sTime,3,2,V.Local.sMinutes)
+F.Intrinsic.String.Right(V.Local.sTime,2,V.Local.sSeconds)
+F.Intrinsic.String.Build("{0}-{1}-{2} {3}:{4}:{5}",V.Local.sYear,V.Local.sMonth,V.Local.sDay,V.Local.sHours,V.Local.sMinutes,V.Local.sSeconds,V.Local.sSQLDate)
+
+'called from custom menu GAB hook
+F.Intrinsic.Control.If(v.Caller.Hook,<,"1000000")
+	V.Local.sLMO.Set(V.Passed.009989)
+	V.Local.sJob.Set(V.Passed.009990)
+	V.Local.sSuffix.Set(V.Passed.009991)
+	V.Local.sSeq.Set(V.Passed.009992)
+	V.Local.sWC.Set(V.Passed.009996)
+F.Intrinsic.Control.EndIf
+
+' Check to see that it is a material sequence
+F.Intrinsic.String.Build("Select LMO from V_JOB_OPERATIONS where JOB='{0}' and SUFFIX='{1}' and SEQ='{2}'",V.Local.sJob,V.Local.sSuffix,V.Local.sSeq,V.Local.sSql)
+F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSql,V.Local.sRet)
+
+F.Intrinsic.Control.If(V.Local.sRet,<>,"M")
+	F.Intrinsic.UI.Msgbox("Please select a material sequence.","On-line GUI Message")
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.String.Build("select TOP 1 PART from V_JOB_OPERATIONS where JOB='{0}' AND SUFFIX='{1}' and SEQ>'{2}' and LMO='L' order by SEQ",V.Local.sJob,V.Local.sSuffix,V.Local.sSeq,V.Local.sSql)
+F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSql,V.Local.sWC)
+
+'Time to rock and roll...
+F.Intrinsic.String.Build("select TOP 9 A.PART, C.LOCATION, A.HOURS_ESTIMATED-A.HOURS_ACTUAL AS OPEN_QUANTITY, B.BIN, B.LOT, B.HEAT, B.SERIAL_NUMBER, B.QUANTITY from V_JOB_OPERATIONS A left outer join V_ITEM_MASTER B on A.PART=B.PART left outer join V_JOB_HEADER C on A.JOB=C.JOB and A.SUFFIX=C.SUFFIX where A.JOB='{0}' and A.SUFFIX='{1}' and A.SEQ='{2}' and A.LMO='M' and A.FLAG_CLOSED<>'Y' ORDER BY LOT",V.Local.sJob,V.Local.sSuffix,V.Local.sSeq,V.Local.sSql)
+F.Data.DataTable.CreateFromSQL("dtData","con",V.Local.sSql)
+
+F.Intrinsic.Control.If(V.DataTable.dtData.RowCount,<=,0)
+	F.Intrinsic.UI.Msgbox("No open material found for this sequence.","On-line GUI Message")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.For(V.Local.i,0,V.DataTable.dtData.RowCount--,1)
+	F.Intrinsic.Control.If(V.Local.i,=,0)
+		V.Local.sPart.Set(V.DataTable.dtData(V.Local.i).PART!FieldVal)
+		V.Local.sOpenQty.Set(V.DataTable.dtData(V.Local.i).OPEN_QUANTITY!FieldVal)
+	F.Intrinsic.Control.Else
+		V.Local.sBin.Append("#!#")
+		V.Local.sLot.Append("#!#")
+		V.Local.sHeat.Append("#!#")
+		V.Local.sSerial.Append("#!#")
+		V.Local.sQuantity.Append("#!#")
+	F.Intrinsic.Control.EndIf
+	V.Local.sBin.Append(V.DataTable.dtData(V.Local.i).BIN!FieldVal)
+	V.Local.sLot.Append(V.DataTable.dtData(V.Local.i).LOT!FieldValTrim)
+	V.Local.sHeat.Append(V.DataTable.dtData(V.Local.i).HEAT!FieldValTrim)
+	V.Local.sSerial.Append(V.DataTable.dtData(V.Local.i).SERIAL_NUMBER!FieldValTrim)
+	V.Local.sQuantity.Append(V.DataTable.dtData(V.Local.i).QUANTITY!FieldVal)
+F.Intrinsic.Control.Next(V.Local.i)
+
+V.Local.sFilename.Set("GAB_6622_MatlDispatchTicket_Codesoft.lab")
+F.Intrinsic.String.Build("{0}\LABELS\CUSTOM\{1}",V.Caller.BusintDir,V.Local.sFilename,V.Local.sRptLoc)
+
+'Get Report ID From Name
+F.Global.BI.GetIDFromName(V.Local.sFilename,V.Global.iBIRptID)
+F.Intrinsic.Control.If(V.Global.iBIRptID,<=,0)
+	F.Global.BI.InitializeReport("Material Dispatch Ticket Codesoft (ARC 6622)",V.Local.sRptBILoc,V.Global.iBIRptID)
+F.Intrinsic.Control.EndIf
+
+'Prepare Label Data
+'                         0      1     2        3          4            5      6          7     8     9      10       11         12
+F.Intrinsic.String.Split("PART*!*JOB*!*SUFFIX*!*SEQUENCE*!*WORKCENTER*!*EMPL*!*EMPLNAME*!*BIN*!*LOT*!*HEAT*!*SERIAL*!*QUANTITY*!*OPEN_QUANTITY","*!*",V.Local.sFields)
+F.Intrinsic.String.Build("{0}*!*{1}*!*{2}*!*{3}*!*{4}*!*{5}*!*{6}*!*{7}*!*{8}*!*{9}*!*{10}*!*{11}*!*{12}",V.Local.sPart,V.Local.sJob,V.Local.sSuffix,V.Local.sSeq,V.Local.sWC,V.Global.GuiUserNo,V.Global.GuiUserName,V.Local.sBin,V.Local.sLot,V.Local.sHeat,V.Local.sSerial,V.Local.sQuantity,V.Local.sOpenQty,V.Local.sValues)
+F.Intrinsic.String.Split(V.Local.sValues,"*!*",V.Local.sValues)
+
+'Starting BI Logging
+F.Global.BI.StartLogging(V.Global.iBIRunID,V.Global.iBIRptID,-1,"",V.Global.iBILogID)
+'Stopping Logging
+F.Global.BI.StopLogging(V.Global.iBILogID)
+
+'Printing Codesoft label
+F.Global.BI.PrintCodesoftLabel(V.Global.iBIRptID,V.Local.sFields,V.Local.sValues,0,"","1")
+
+Program.Sub.MatlReq.End
+
+Program.Sub.Comments.Start
+${$0$}$GAB_MATL_Handling.$}$SUPERVSR$}$12/29/15$}$False
+${$5$}$2.0.0.0$}$2
+${$6$}$jwithrow$}$20220209111704561$}$D95tSYIikIvF+oq+s87EtBQePACEH+EyDs2gPmW3WNpBM6AXqm2+d3njc96w0okrKpISemxrE6LCuXxFO/X2Og==
+Program.Sub.Comments.End
